@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import math
-
+from swiglu import SwiGLU
 max_iters = 3000
 eval_interval = 300
 eval_iters = 100
@@ -118,6 +118,8 @@ class RotaryEmbedding(nn.Module):
         x1, x2 = x[..., :C//2], x[..., C//2:]   # x1: (B, T, C//2), x2: (B, T, C//2)
         return torch.cat([x1 * cos - x2 * sin, x1 * sin + x2 * cos], dim=-1)
 
+
+
 class Head(nn.Module):
     def __init__(self, head_size, rope):
         super().__init__()
@@ -125,9 +127,6 @@ class Head(nn.Module):
         self.key = nn.Linear(n_embed, head_size, bias=False)
         self.query = nn.Linear(n_embed, head_size, bias=False)
         self.value = nn.Linear(n_embed, head_size, bias=False)
-        # 为什么这里用torch.ones(),不用torch.zeros()?
-        # 因为torch.ones()和torch.zeros()的区别在于，torch.ones()会将所有元素初始化为1，而torch.zeros()会将所有元素初始化为0。
-        # 而torch.tril()的用法是生成一个下三角矩阵，其对角线以下的元素都为0，对角线以上的元素都为1。
         self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
         self.rope = rope
         self.dropout = nn.Dropout(dropout)
@@ -160,15 +159,14 @@ class FeedForward(nn.Module):
     def __init__(self, n_embed):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(n_embed, 4 * n_embed),
-            nn.GELU(),
-            nn.Linear(4*n_embed, n_embed),
+            SwiGLU(n_embed),
             nn.Dropout(dropout),
         )
 
     def forward(self, x):
         out = self.net(x)
         return out
+
 
 class Block(nn.Module):
     def __init__(self, n_embed, n_heads, rope):
