@@ -82,7 +82,6 @@ python gqa.py             # 默写件自带 __main__ 性质自测（repeat_kv �
 |---|---|
 | testv3.py / testv4.py / testv5.py | 本人手写（AI 审查 + 考卷验收） |
 | rope.py / swiglu.py / gqa.py | 本人白纸默写件（rope.py 后对齐 HF 源码约定重构） |
-| lora.py / testv6.py | AI 辅助生成参考实现，本人手动录入并逐行注释理解 |
 | README.md | AI 助手（ZCode）起草 |
 
 验证考卷与学习笔记不入库（本地保存）；考卷由 AI 助手编写，用于组件验收。
