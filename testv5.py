@@ -5,6 +5,9 @@ import math
 from swiglu import SwiGLU
 from rope import RotaryEmbedding
 from gqa import repeat_kv
+
+
+
 # ---------------------
 max_iters = 3000
 eval_interval = 300
@@ -85,10 +88,17 @@ def get_lr(iters):
 class RMSNorm(nn.Module):
     def __init__(self, dim, eps=1e-5):
         super().__init__()
-        self.eps = eps
+        # 为什么要有self.weight = nn.Parameter(torch.ones(dim))?
+        # self.weight = nn.Parameter(torch.ones(dim)) 是为了在 RMSNorm 中引入可学习的缩放参数。
+        # RMSNorm 通过计算输入张量的均方根（RMS）来进行归一化，但为了增加模型的表达能力，通常会引入一个可学习的权重参数 self.weight。
         self.weight = nn.Parameter(torch.ones(dim))
+        self.eps = eps
 
     def forward(self, x):
+        # mean(-1)是什么意思?
+        # mean(-1)表示对张量的最后一个维度进行求平均值操作。
+        # 在这个上下文中，x是一个多维张量，
+        # mean(-1)会计算每个样本在最后一个维度上的均值，从而得到一个新的张量，其形状比原始张量少一个维度。
         rms = torch.sqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
         return x / rms * self.weight
 
@@ -101,14 +111,15 @@ class MultiHeadAttention(nn.Module):
         self.embed_size = n_embed
         self.head_size = n_embed // n_heads
         self.n_kv_heads = n_kv_heads if n_kv_heads is not None else n_heads
-        assert n_heads % self.n_kv_heads == 0
-        self.group_size = n_heads // self.n_kv_heads
-        self.query = nn.Linear(n_embed, self.n_heads*self.head_size, bias=False)
-        self.key = nn.Linear(n_embed, self.n_kv_heads*self.head_size, bias=False)
-        self.value = nn.Linear(n_embed, self.n_kv_heads*self.head_size, bias=False)
-        self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
-        self.proj = nn.Linear(n_heads * self.head_size, n_embed)
+        assert self.n_heads % self.n_kv_heads == 0
         self.rope = rope
+        self.group_size = self.n_heads // self.n_kv_heads
+        self.query = nn.Linear(self.embed_size, self.n_heads*self.head_size, bias=True)
+        self.key = nn.Linear(self.embed_size, self.n_kv_heads*self.head_size, bias=True)
+        self.value = nn.Linear(self.embed_size, self.n_kv_heads*self.head_size, bias=True)
+        self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
+        self.proj = nn.Linear(self.n_heads * self.head_size, self.embed_size, bias=False)
+        self.rope = self.rope
         self.attn_dropout = nn.Dropout(dropout)
         self.resid_dropout = nn.Dropout(dropout)
 
@@ -159,10 +170,14 @@ class FeedForward(nn.Module):
 class Block(nn.Module):
     def __init__(self, n_embed, n_heads, rope, n_kv_heads=None):
         super().__init__()
-        self.sa = MultiHeadAttention(n_heads, n_embed, n_kv_heads=n_kv_heads, rope=rope)
-        self.ffwd = FeedForward(n_embed)
-        self.ln1 = RMSNorm(n_embed)
-        self.ln2 = RMSNorm(n_embed)
+        self.n_embed = n_embed
+        self.n_heads = n_heads
+        self.rope = rope
+        self.n_kv_heads = n_kv_heads
+        self.sa = MultiHeadAttention(self.n_heads, self.n_embed, n_kv_heads=self.n_kv_heads, rope=self.rope)
+        self.ffwd = FeedForward(self.n_embed)
+        self.ln1 = RMSNorm(self.n_embed)
+        self.ln2 = RMSNorm(self.n_embed)
 
     def forward(self, x):
         x = self.sa(self.ln1(x)) + x
@@ -234,7 +249,7 @@ for iter in range(max_iters):
     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)   # 梯度裁剪
     optimizer.step()
 
-
+torch.save(model.state_dict(), 'checkpoints/base_model.pt')
 context = torch.zeros((1,1), dtype=torch.long, device=device)
 print(decode(m.generate(context, max_new_tokens=500)[0].tolist()))
         
