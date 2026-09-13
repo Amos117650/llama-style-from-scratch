@@ -5,3 +5,7 @@ __pycache__/
 进度看板.md
 *.env
 gpt-2/
+ref/
+learn_test/
+简历/
+checkpoints/
